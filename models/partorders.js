@@ -3,9 +3,9 @@ const mongoose = require("mongoose");
 // Define the Service schema
 const PartsSchema = new mongoose.Schema({
   item: { type: String, required: true },
-  amount: { type: Number, required: true },
+  amount: { type: Number},
   quantity: { type: Number, required: true },
-  totalPrice: { type: Number, required: true }, // Calculated total for each service (amount * quantity)
+  totalPrice: { type: Number }, // Calculated total for each service (amount * quantity)
 });
 
 // Define the Vehicle schema

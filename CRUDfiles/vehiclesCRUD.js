@@ -18,13 +18,23 @@ exports.createVehicle = async (req, res) => {
       spareParts,
       paymentMethod,
       paidAmount,
+      discount,
     } = req.body;
 
-    // Calculate totalPrice for each service
-    const servicesWithTotalPrice = services.map((service) => ({
-      ...service,
-      totalPrice: service.amount * service.quantity,
-    }));
+    // Calculate vat and subTotal for each service
+    const servicesWithDetails = services.map((service) => {
+      const vat = service.vat !== undefined ? service.vat : 0.05 * (service.unitPrice * service.quantity); // User-defined or calculated VAT
+      const subTotal = service.unitPrice * service.quantity + vat; // Subtotal includes overridden or calculated VAT
+      return {
+        ...service,
+        vat,
+        subTotal,
+      };
+    });
+    // Calculate totalAmount and dueAmount
+    const totalAmount = servicesWithDetails.reduce((total, service) => total + service.subTotal, 0);
+    const dueAmount = totalAmount - discount;
+    const pendingAmount = dueAmount - paidAmount;
 
     // Create a new Vehicle document
     const newVehicle = new Vehicle({
@@ -36,10 +46,14 @@ exports.createVehicle = async (req, res) => {
       vehicleModel,
       mileage,
       vehicleAnalysis,
-      services: servicesWithTotalPrice,
+      services: servicesWithDetails,
       spareParts,
       paymentMethod,
       paidAmount,
+      discount,
+      totalAmount,
+      dueAmount,
+      pendingAmount,
     });
 
     // Save the document
@@ -62,12 +76,10 @@ exports.getAllVehicles = async (req, res) => {
     const vehicles = await Vehicle.find();
     res.status(200).json(vehicles);
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Error fetching vehicle records",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error fetching vehicle records",
+      error: error.message,
+    });
   }
 };
 
@@ -78,9 +90,7 @@ exports.getVehicleById = async (req, res) => {
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
     res.status(200).json(vehicle);
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching vehicle record", error: error.message });
+    res.status(500).json({ message: "Error fetching vehicle record", error: error.message });
   }
 };
 
@@ -104,27 +114,29 @@ exports.updateVehicle = async (req, res) => {
     if (updates.brand) vehicle.brand = updates.brand;
     if (updates.vehicleModel) vehicle.vehicleModel = updates.vehicleModel;
     if (updates.mileage) vehicle.mileage = updates.mileage;
-    if (updates.vehicleAnalysis)
-      vehicle.vehicleAnalysis = updates.vehicleAnalysis;
+    if (updates.vehicleAnalysis) vehicle.vehicleAnalysis = updates.vehicleAnalysis;
     if (updates.spareParts) vehicle.spareParts = updates.spareParts;
     if (updates.paymentMethod) vehicle.paymentMethod = updates.paymentMethod;
-    if (updates.paidAmount !== undefined)
-      vehicle.paidAmount = updates.paidAmount;
+    if (updates.paidAmount !== undefined) vehicle.paidAmount = updates.paidAmount;
+    if (updates.discount !== undefined) vehicle.discount = updates.discount;
 
-    // Update the services array and recalculate totalPrice for each service
+    // Update the services array and recalculate vat and subTotal for each service
     if (updates.services) {
-      vehicle.services = updates.services.map((service) => ({
-        ...service,
-        totalPrice: service.amount * service.quantity, // Recalculate totalPrice
-      }));
+      vehicle.services = updates.services.map((service) => {
+        const vat = service.vat !== undefined ? service.vat : 0.05 * (service.unitPrice * service.quantity); // User-defined or calculated VAT
+        const subTotal = service.unitPrice * service.quantity + vat; // Subtotal includes overridden or calculated VAT
+        return {
+          ...service,
+          vat,
+          subTotal,
+        };
+      });
     }
 
-    // Recalculate totalAmount and pendingAmount
-    vehicle.totalAmount = vehicle.services.reduce(
-      (total, service) => total + service.totalPrice,
-      0
-    );
-    vehicle.pendingAmount = vehicle.totalAmount - vehicle.paidAmount;
+    // Recalculate totalAmount, dueAmount, and pendingAmount
+    vehicle.totalAmount = vehicle.services.reduce((total, service) => total + service.subTotal, 0);
+    vehicle.dueAmount = vehicle.totalAmount - vehicle.discount;
+    vehicle.pendingAmount = vehicle.dueAmount - vehicle.paidAmount;
 
     // Update statusOfWork and finishDate based on pendingAmount
     if (vehicle.pendingAmount === 0 && vehicle.totalAmount > 0) {
@@ -154,13 +166,10 @@ exports.updateVehicle = async (req, res) => {
 exports.deleteVehicle = async (req, res) => {
   try {
     const deletedVehicle = await Vehicle.findByIdAndDelete(req.params.id);
-    if (!deletedVehicle)
-      return res.status(404).json({ message: "Vehicle not found" });
+    if (!deletedVehicle) return res.status(404).json({ message: "Vehicle not found" });
     res.status(200).json({ message: "Vehicle record deleted successfully" });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error deleting vehicle record", error: error.message });
+    res.status(500).json({ message: "Error deleting vehicle record", error: error.message });
   }
 };
 
